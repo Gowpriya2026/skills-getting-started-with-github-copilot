@@ -4,6 +4,43 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
+  // Function to handle delete button clicks
+  function handleDeleteClick(e) {
+    e.preventDefault();
+    const email = e.target.dataset.email;
+    const activity = e.target.dataset.activity;
+    // Send DELETE request to unregister
+    fetch(
+      `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(email)}`,
+      {
+        method: "DELETE",
+      }
+    )
+    .then(response => response.json().then(result => ({ response, result })))
+    .then(({ response, result }) => {
+      if (response.ok) {
+        // Remove the li
+        e.target.closest('li').remove();
+        // Update availability
+        const card = e.target.closest('.activity-card');
+        const availP = Array.from(card.querySelectorAll('p')).find(p => p.innerHTML.includes('<strong>Availability:</strong>'));
+        if (availP) {
+          const match = availP.innerHTML.match(/(\d+) spots left/);
+          if (match) {
+            const current = parseInt(match[1]);
+            availP.innerHTML = availP.innerHTML.replace(/\d+ spots left/, `${current + 1} spots left`);
+          }
+        }
+      } else {
+        alert(result.detail || "Failed to unregister");
+      }
+    })
+    .catch(error => {
+      console.error("Error unregistering:", error);
+      alert("Failed to unregister. Please try again.");
+    });
+  }
+
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
@@ -12,6 +49,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+
+      // Clear and reset activity select
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -25,6 +65,10 @@ document.addEventListener("DOMContentLoaded", () => {
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <p><strong>Participants:</strong></p>
+          <ul class="participants-list">
+            ${details.participants.map(email => `<li>${email} <button class="delete-btn" data-email="${email}" data-activity="${name}">×</button></li>`).join('')}
+          </ul>
         `;
 
         activitiesList.appendChild(activityCard);
@@ -34,6 +78,11 @@ document.addEventListener("DOMContentLoaded", () => {
         option.value = name;
         option.textContent = name;
         activitySelect.appendChild(option);
+      });
+
+      // Add event listeners for delete buttons
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', handleDeleteClick);
       });
     } catch (error) {
       activitiesList.innerHTML = "<p>Failed to load activities. Please try again later.</p>";
@@ -62,6 +111,27 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // Add the participant to the UI directly
+        const card = Array.from(document.querySelectorAll('.activity-card')).find(card => card.querySelector('h4').textContent === activity);
+        if (card) {
+          const ul = card.querySelector('.participants-list');
+          if (ul) {
+            const li = document.createElement('li');
+            li.innerHTML = `${email} <button class="delete-btn" data-email="${email}" data-activity="${activity}">×</button>`;
+            ul.appendChild(li);
+            // Add event listener to the new delete button
+            li.querySelector('.delete-btn').addEventListener('click', handleDeleteClick);
+            // Update availability
+            const availP = Array.from(card.querySelectorAll('p')).find(p => p.innerHTML.includes('<strong>Availability:</strong>'));
+            if (availP) {
+              const match = availP.innerHTML.match(/(\d+) spots left/);
+              if (match) {
+                const current = parseInt(match[1]);
+                availP.innerHTML = availP.innerHTML.replace(/\d+ spots left/, `${current - 1} spots left`);
+              }
+            }
+          }
+        }
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
